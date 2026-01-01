@@ -66,6 +66,12 @@ export default function HomePage() {
     inputRef.current?.focus();
   };
 
+  // Handle click on suggestion chips - directly execute the query
+  const handleSuggestionClick = async (query: string) => {
+    if (isLoading) return;
+    await sendMessage(query);
+  };
+
   return (
     <div className="flex h-screen flex-col bg-gradient-to-br from-slate-50 via-white to-slate-100">
       {/* Header */}
@@ -171,7 +177,13 @@ export default function HomePage() {
 
           {/* Messages */}
           {messages.map((message) => (
-            <MessageBubble key={message.id} role={message.role} contents={message.contents} timestamp={message.timestamp} />
+            <MessageBubble
+              key={message.id}
+              role={message.role}
+              contents={message.contents}
+              timestamp={message.timestamp}
+              onSuggestionClick={handleSuggestionClick}
+            />
           ))}
 
           <div ref={messagesEndRef} />

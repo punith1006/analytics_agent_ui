@@ -6,7 +6,7 @@ import { useState, useCallback, useRef } from "react";
 const ANALYTICS_API_URL = process.env.NEXT_PUBLIC_ANALYTICS_API_URL || "http://localhost:8001";
 
 export interface MessageContent {
-    type: "text" | "sql" | "data" | "analysis" | "chart" | "metrics" | "error" | "thinking";
+    type: "text" | "sql" | "data" | "analysis" | "chart" | "metrics" | "error" | "thinking" | "suggestions" | "clarification" | "explanatory";
     content: unknown;
 }
 
@@ -21,8 +21,10 @@ interface UseAnalyticsChatReturn {
     messages: Message[];
     isLoading: boolean;
     error: string | null;
+    conversationId: string;
     sendMessage: (query: string) => Promise<void>;
     clearMessages: () => void;
+    newConversation: () => void;
 }
 
 /**
@@ -33,6 +35,9 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const currentMessageRef = useRef<Message | null>(null);
+
+    // Generate conversation ID once per session
+    const conversationIdRef = useRef<string>(Math.random().toString(36).substring(2, 15));
 
     const generateId = (): string => Math.random().toString(36).substring(2, 15);
 
@@ -77,6 +82,10 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
                 case "sql_generated":
                     updateCurrentMessage({ type: "sql", content: eventData });
                     break;
+                case "sql_retry":
+                    // Self-healing retry - show corrected SQL
+                    updateCurrentMessage({ type: "sql", content: eventData });
+                    break;
                 case "data_retrieved":
                     updateCurrentMessage({ type: "data", content: eventData });
                     break;
@@ -91,6 +100,16 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
                     if (vizData && Array.isArray(vizData.metrics) && vizData.metrics.length > 0) {
                         updateCurrentMessage({ type: "metrics", content: vizData.metrics });
                     }
+                    break;
+                case "suggestions":
+                    updateCurrentMessage({ type: "suggestions", content: eventData });
+                    break;
+                case "clarification_needed":
+                    updateCurrentMessage({ type: "clarification", content: eventData });
+                    break;
+                case "advisory":
+                case "explanatory":
+                    updateCurrentMessage({ type: "explanatory", content: eventData });
                     break;
                 case "error":
                     updateCurrentMessage({ type: "error", content: eventData });
@@ -130,7 +149,10 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
                         "Content-Type": "application/json",
                         Accept: "text/event-stream",
                     },
-                    body: JSON.stringify({ query }),
+                    body: JSON.stringify({
+                        query,
+                        conversation_id: conversationIdRef.current
+                    }),
                 });
 
                 if (!response.ok) {
@@ -211,5 +233,19 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
         currentMessageRef.current = null;
     }, []);
 
-    return { messages, isLoading, error, sendMessage, clearMessages };
+    // Start a new conversation with fresh ID
+    const newConversation = useCallback(() => {
+        conversationIdRef.current = Math.random().toString(36).substring(2, 15);
+        clearMessages();
+    }, [clearMessages]);
+
+    return {
+        messages,
+        isLoading,
+        error,
+        conversationId: conversationIdRef.current,
+        sendMessage,
+        clearMessages,
+        newConversation
+    };
 }
