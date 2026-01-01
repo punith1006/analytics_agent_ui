@@ -15,6 +15,7 @@ interface ChatPanelProps {
     suggestedQueries: Array<{ icon: string; text: string }>;
     onSuggestedQuery: (query: string) => void;
     onClearMessages: () => void;
+    onRetry?: () => void;
 }
 
 export default function ChatPanel({
@@ -28,6 +29,7 @@ export default function ChatPanel({
     suggestedQueries,
     onSuggestedQuery,
     onClearMessages,
+    onRetry,
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -136,15 +138,30 @@ export default function ChatPanel({
                     )}
 
                     {/* Messages */}
-                    {messages.map((message) => (
-                        <MessageBubble
-                            key={message.id}
-                            role={message.role}
-                            contents={message.contents}
-                            timestamp={message.timestamp}
-                            onSuggestionClick={onSuggestionClick}
-                        />
-                    ))}
+                    {messages.map((message, index) => {
+                        // Find the last assistant message for retry button
+                        const lastAssistantIndex = messages.map((m, i) => ({ role: m.role, index: i })).filter(m => m.role === "assistant").pop()?.index;
+                        const isLatestAssistant = message.role === "assistant" && index === lastAssistantIndex;
+
+                        // Extract title from chart content if available
+                        const chartContent = message.contents.find(c => c.type === "chart");
+                        const messageTitle = chartContent
+                            ? ((chartContent.content as Record<string, unknown>)?.chartConfig as Record<string, unknown>)?.title as string
+                            : "Analytics_Report";
+
+                        return (
+                            <MessageBubble
+                                key={message.id}
+                                role={message.role}
+                                contents={message.contents}
+                                timestamp={message.timestamp}
+                                onSuggestionClick={onSuggestionClick}
+                                isLatestMessage={isLatestAssistant}
+                                onRetry={onRetry}
+                                messageTitle={messageTitle || "Analytics_Report"}
+                            />
+                        );
+                    })}
 
                     <div ref={messagesEndRef} />
                 </div>

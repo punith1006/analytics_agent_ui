@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import ChartRenderer from "./ChartRenderer";
 import SuggestionChips from "./SuggestionChips";
 import { MessageContent } from "@/hooks/useAnalyticsChat";
@@ -18,10 +18,58 @@ interface MessageBubbleProps {
     contents: MessageContent[];
     timestamp?: Date;
     onSuggestionClick?: (query: string) => void;
+    isLatestMessage?: boolean;
+    onRetry?: () => void;
+    messageTitle?: string;
 }
 
-export default function MessageBubble({ role, contents, timestamp, onSuggestionClick }: MessageBubbleProps) {
+export default function MessageBubble({
+    role,
+    contents,
+    timestamp,
+    onSuggestionClick,
+    isLatestMessage = false,
+    onRetry,
+    messageTitle = "Analytics Report"
+}: MessageBubbleProps) {
     const isUser = role === "user";
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [isExporting, setIsExporting] = useState(false);
+
+    // Export message content to PDF
+    const handleDownloadPDF = async () => {
+        if (!contentRef.current || isExporting) return;
+
+        setIsExporting(true);
+        try {
+            // Dynamic import html2pdf to avoid SSR issues
+            const html2pdf = (await import('html2pdf.js')).default;
+
+            const element = contentRef.current;
+            const filename = `${messageTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+            const opt = {
+                margin: [10, 10, 10, 10] as [number, number, number, number],
+                filename: filename,
+                image: { type: 'jpeg' as const, quality: 0.98 },
+                html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    scrollY: 0,
+                    windowWidth: element.scrollWidth
+                },
+                jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            await html2pdf().set(opt as any).from(element).save();
+        } catch (error) {
+            console.error('PDF export failed:', error);
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     const renderContent = (content: MessageContent, index: number) => {
         const data = content.content as Record<string, unknown>;
@@ -383,15 +431,55 @@ export default function MessageBubble({ role, contents, timestamp, onSuggestionC
                     </div>
                 )}
 
-                <div className={isUser ? "text-white" : "text-gray-800"}>
+                <div ref={contentRef} className={isUser ? "text-white" : "text-gray-800"}>
                     {contents.map((content, index) => renderContent(content, index))}
                 </div>
 
-                {timestamp && (
-                    <p className={`mt-3 text-xs ${isUser ? "text-blue-100" : "text-gray-400"}`}>
-                        {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                )}
+                {/* Timestamp and Action Buttons */}
+                <div className={`mt-3 flex items-center justify-between ${isUser ? "" : "border-t border-gray-100 pt-3"}`}>
+                    {timestamp && (
+                        <p className={`text-xs ${isUser ? "text-blue-100" : "text-gray-400"}`}>
+                            {timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                    )}
+
+                    {/* Action Buttons - only for assistant messages */}
+                    {!isUser && (
+                        <div className="flex items-center gap-2">
+                            {/* Retry Button - only for latest message */}
+                            {isLatestMessage && onRetry && (
+                                <button
+                                    onClick={onRetry}
+                                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-600 transition-colors"
+                                    title="Retry this query"
+                                >
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                </button>
+                            )}
+
+                            {/* Download PDF Button */}
+                            <button
+                                onClick={handleDownloadPDF}
+                                disabled={isExporting}
+                                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-green-600 transition-colors disabled:opacity-50"
+                                title="Download as PDF"
+                            >
+                                {isExporting ? (
+                                    <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                    </svg>
+                                ) : (
+                                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                    </svg>
+                                )}
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

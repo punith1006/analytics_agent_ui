@@ -78,6 +78,19 @@ export default function HomePage() {
     await sendMessage(query);
   };
 
+  // Retry: Find the last user message and resend it
+  const handleRetry = async () => {
+    if (isLoading) return;
+    // Find the last user message
+    const lastUserMessage = [...messages].reverse().find(m => m.role === "user");
+    if (lastUserMessage) {
+      const userText = lastUserMessage.contents.find(c => c.type === "text")?.content as string;
+      if (userText) {
+        await sendMessage(userText);
+      }
+    }
+  };
+
   return (
     <div className="flex h-screen flex-col bg-gray-100">
       {/* Header */}
@@ -133,6 +146,7 @@ export default function HomePage() {
             suggestedQueries={SUGGESTED_QUERIES}
             onSuggestedQuery={handleSuggestedQuery}
             onClearMessages={clearMessages}
+            onRetry={handleRetry}
           />
         </div>
       </main>
