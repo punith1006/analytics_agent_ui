@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useRef, useState } from "react";
 import ChartRenderer from "./ChartRenderer";
 import { PinnedDataState, DataSection } from "@/hooks/usePinnedData";
 
@@ -21,9 +21,51 @@ function DataSectionCard({
     onRemove: () => void;
 }) {
     const timeAgo = getTimeAgo(section.timestamp);
+    const sectionRef = useRef<HTMLDivElement>(null);
+    const [isDownloading, setIsDownloading] = useState(false);
+
+    // Download section as PNG
+    const handleDownloadPNG = async () => {
+        if (!sectionRef.current || isDownloading) return;
+
+        setIsDownloading(true);
+        try {
+            // Dynamic import html2canvas
+            const html2canvas = (await import('html2canvas')).default;
+
+            const element = sectionRef.current;
+            const title = section.chart?.title || "data_view";
+            const filename = `${title.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.png`;
+
+            const canvas = await html2canvas(element, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff',
+                logging: false,
+            });
+
+            // Convert to blob and download
+            canvas.toBlob((blob) => {
+                if (blob) {
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            }, 'image/png', 1.0);
+        } catch (error) {
+            console.error('PNG export failed:', error);
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
     return (
-        <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden transition-all duration-300 animate-in slide-in-from-top-2">
+        <div ref={sectionRef} className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-hidden transition-all duration-300 animate-in slide-in-from-top-2">
             {/* Section Header */}
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2 bg-gray-50">
                 <div className="flex items-center gap-2">
@@ -32,15 +74,36 @@ function DataSectionCard({
                     </span>
                     <span className="text-xs text-gray-400">{timeAgo}</span>
                 </div>
-                <button
-                    onClick={onRemove}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"
-                    title="Remove section"
-                >
-                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                <div className="flex items-center gap-1">
+                    {/* Download PNG Button */}
+                    <button
+                        onClick={handleDownloadPNG}
+                        disabled={isDownloading}
+                        className="rounded p-1 text-gray-400 hover:bg-green-100 hover:text-green-600 transition-colors disabled:opacity-50"
+                        title="Download as PNG"
+                    >
+                        {isDownloading ? (
+                            <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                        ) : (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                        )}
+                    </button>
+                    {/* Remove Button */}
+                    <button
+                        onClick={onRemove}
+                        className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-600 transition-colors"
+                        title="Remove section"
+                    >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <div className="p-3 space-y-3">
