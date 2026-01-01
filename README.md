@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# LMS Analytics Agent - Test UI
 
-## Getting Started
+A standalone Next.js application to test the LMS Analytics Agent backend.
 
-First, run the development server:
+## Quick Start
+
+### 1. Start the Python Backend
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd c:\Users\Punith\GKT_LMS\analytics_agent
+.\venv\Scripts\activate
+python main.py
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Backend will run on: `http://localhost:8001`
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 2. Start the Frontend
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+```bash
+cd c:\Users\Punith\GKT_LMS\analytics-agent-ui
+npm run dev
+```
 
-## Learn More
+Frontend will run on: `http://localhost:3000`
 
-To learn more about Next.js, take a look at the following resources:
+### 3. Configure OpenAI API Key
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Edit the `.env` file in the `analytics_agent` folder:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+```
+OPENAI_API_KEY=your-api-key-here
+```
 
-## Deploy on Vercel
+## Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- 🤖 Natural language queries to your LMS database
+- 📊 Dynamic chart generation (Line, Bar, Area, Pie, Scatter)
+- 💡 AI-powered insights and recommendations
+- ⚡ Real-time SSE streaming responses
+- 🔒 Read-only database access (no data modification)
+- 📈 Confidence scoring for all queries
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+## Sample Queries to Try
+
+1. "How many courses do we have?"
+2. "Show me enrollment trends over time"
+3. "What are the top 5 courses by enrollment?"
+4. "List all active partners"
+5. "Show course category distribution"
+
+## Technology Stack
+
+- **Frontend**: Next.js 14, TypeScript, Tailwind CSS, Recharts
+- **Backend**: Python FastAPI, OpenAI GPT-4o, SQLAlchemy, MySQL
+- **Communication**: Server-Sent Events (SSE)
