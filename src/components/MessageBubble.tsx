@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useRef, useState } from "react";
-import ChartRenderer from "./ChartRenderer";
+import ChartRenderer, { DataPointClickEvent } from "./ChartRenderer";
 import SuggestionChips from "./SuggestionChips";
+import NarrativeView from "./NarrativeView";
+import BookmarkButton from "./BookmarkButton";
 import { MessageContent } from "@/hooks/useAnalyticsChat";
 
 interface MetricCard {
@@ -13,6 +15,13 @@ interface MetricCard {
     color?: string;
 }
 
+// Define Context Interface matching DrillContext
+export interface MessageContext {
+    sql_query: string;
+    columns: string[];
+    tables_used: string[];
+}
+
 interface MessageBubbleProps {
     role: "user" | "assistant";
     contents: MessageContent[];
@@ -21,6 +30,8 @@ interface MessageBubbleProps {
     isLatestMessage?: boolean;
     onRetry?: () => void;
     messageTitle?: string;
+    onDataPointClick?: (event: DataPointClickEvent, context: MessageContext) => void;
+    onBookmark?: () => void;
 }
 
 export default function MessageBubble({
@@ -30,11 +41,31 @@ export default function MessageBubble({
     onSuggestionClick,
     isLatestMessage = false,
     onRetry,
-    messageTitle = "Analytics Report"
+    messageTitle = "Analytics Report",
+    onDataPointClick,
+    onBookmark
 }: MessageBubbleProps) {
     const isUser = role === "user";
+    const hasDataOrChart = contents.some(c => c.type === "chart" || c.type === "data" || c.type === "metrics" || c.type === "analysis");
+    const hasNarrative = contents.some(c => c.type === "narrative");
     const contentRef = useRef<HTMLDivElement>(null);
     const [isExporting, setIsExporting] = useState(false);
+
+    // Helper to extract context from current contents
+    const getMessageContext = (): MessageContext => {
+        const sqlContent = contents.find(c => c.type === "sql");
+        const dataContent = contents.find(c => c.type === "data");
+
+        // Handle sql_generated or sql_retry
+        const sqlData = sqlContent?.content as { sql?: string; corrected_sql?: string; tables_used?: string[] } | undefined;
+        const dataData = dataContent?.content as { columns?: string[] } | undefined;
+
+        return {
+            sql_query: sqlData?.sql || sqlData?.corrected_sql || "",
+            columns: dataData?.columns || [],
+            tables_used: sqlData?.tables_used || []
+        };
+    };
 
     // Export message content to PDF
     const handleDownloadPDF = async () => {
@@ -43,7 +74,8 @@ export default function MessageBubble({
         setIsExporting(true);
         try {
             // Dynamic import html2pdf to avoid SSR issues
-            const html2pdf = (await import('html2pdf.js')).default;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const html2pdf = (await import('html2pdf.js' as any)).default;
 
             const element = contentRef.current;
             const filename = `${messageTitle.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -83,6 +115,8 @@ export default function MessageBubble({
                 );
 
             case "thinking":
+                const step = typeof data?.step === 'number' ? data.step : null;
+                const totalSteps = typeof data?.total_steps === 'number' ? data.total_steps : null;
                 return (
                     <div key={index} className="flex items-center gap-3">
                         <div className="flex space-x-1">
@@ -91,9 +125,9 @@ export default function MessageBubble({
                             <span className="inline-block h-2.5 w-2.5 animate-bounce rounded-full bg-pink-500" style={{ animationDelay: "300ms" }} />
                         </div>
                         <span className="text-sm text-gray-600">{(data?.status as string) || "Analyzing..."}</span>
-                        {data?.step && data?.total_steps && (
+                        {step !== null && totalSteps !== null && (
                             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
-                                Step {data.step as number}/{data.total_steps as number}
+                                Step {step}/{totalSteps}
                             </span>
                         )}
                     </div>
@@ -126,19 +160,19 @@ export default function MessageBubble({
                                 </span>
                             )}
                         </div>
-                        {isRetry && data?.error_analysis && (
+                        {isRetry && typeof data?.error_analysis === 'string' && (
                             <div className="mb-2 rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm">
-                                <p className="text-amber-800"><strong>Error fixed:</strong> {data.error_analysis as string}</p>
-                                {data?.fix_applied && (
-                                    <p className="text-amber-700 mt-1"><strong>Fix applied:</strong> {data.fix_applied as string}</p>
+                                <p className="text-amber-800"><strong>Error fixed:</strong> {data.error_analysis}</p>
+                                {typeof data?.fix_applied === 'string' && (
+                                    <p className="text-amber-700 mt-1"><strong>Fix applied:</strong> {data.fix_applied}</p>
                                 )}
                             </div>
                         )}
                         <pre className="overflow-x-auto rounded-xl bg-gray-900 p-4 text-sm leading-relaxed text-green-400 shadow-inner">
                             <code>{sqlToShow}</code>
                         </pre>
-                        {data?.explanation && (
-                            <p className="mt-3 text-sm text-gray-600 italic">{data.explanation as string}</p>
+                        {typeof data?.explanation === 'string' && (
+                            <p className="mt-3 text-sm text-gray-600 italic">{data.explanation}</p>
                         )}
                     </div>
                 );
@@ -155,7 +189,7 @@ export default function MessageBubble({
                             <span className="text-sm font-semibold text-gray-700">
                                 Retrieved <span className="text-blue-600">{data?.row_count as number || 0}</span> rows
                             </span>
-                            {data?.limited && (
+                            {data?.limited === true && (
                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">Limited to 1000</span>
                             )}
                         </div>
@@ -189,9 +223,9 @@ export default function MessageBubble({
             case "analysis":
                 return (
                     <div key={index} className="mt-4 space-y-4">
-                        {data?.summary && (
+                        {typeof data?.summary === 'string' && (
                             <div className="rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 p-5">
-                                <p className="font-medium text-gray-800 leading-relaxed">{data.summary as string}</p>
+                                <p className="font-medium text-gray-800 leading-relaxed">{data.summary}</p>
                             </div>
                         )}
                         {(data?.insights as string[])?.length > 0 && (
@@ -228,14 +262,23 @@ export default function MessageBubble({
                 );
 
             case "chart":
+                const chartConfig = data?.chartConfig as Parameters<typeof ChartRenderer>[0]["config"] | undefined;
+                const chartReasoning = typeof data?.reasoning === 'string' ? data.reasoning : null;
                 return (
                     <div key={index} className="mt-4">
-                        {data?.chartConfig && (
-                            <ChartRenderer config={data.chartConfig as Parameters<typeof ChartRenderer>[0]["config"]} />
+                        {chartConfig && (
+                            <ChartRenderer
+                                config={chartConfig}
+                                onDataPointClick={(event) => {
+                                    if (onDataPointClick) {
+                                        onDataPointClick(event, getMessageContext());
+                                    }
+                                }}
+                            />
                         )}
-                        {data?.reasoning && (
+                        {chartReasoning && (
                             <p className="mt-3 text-sm text-gray-500 italic">
-                                📊 {data.reasoning as string}
+                                📊 {chartReasoning}
                             </p>
                         )}
                     </div>
@@ -275,9 +318,9 @@ export default function MessageBubble({
                                 </svg>
                             </div>
                             <div>
-                                <span className="font-semibold text-red-700">{(data?.message as string) || "An error occurred"}</span>
-                                {data?.details && (
-                                    <p className="mt-1 text-sm text-red-600">{data.details as string}</p>
+                                <span className="font-semibold text-red-700">{typeof data?.message === 'string' ? data.message : "An error occurred"}</span>
+                                {typeof data?.details === 'string' && (
+                                    <p className="mt-1 text-sm text-red-600">{data.details}</p>
                                 )}
                             </div>
                         </div>
@@ -404,6 +447,16 @@ export default function MessageBubble({
                     </div>
                 );
 
+            case "narrative":
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const narrativeData = data as any;
+                return (
+                    <NarrativeView
+                        key={index}
+                        narrative={narrativeData}
+                    />
+                );
+
             default:
                 return null;
         }
@@ -424,16 +477,48 @@ export default function MessageBubble({
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
                         </div>
-                        <div>
+                        <div className="flex-1">
                             <span className="font-semibold text-gray-800">Analytics Agent</span>
                             <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">AI</span>
                         </div>
+                        {onBookmark && (
+                            <BookmarkButton
+                                isBookmarked={false}
+                                onBookmark={onBookmark}
+                                onRemoveBookmark={() => { }}
+                            />
+                        )}
                     </div>
                 )}
 
                 <div ref={contentRef} className={isUser ? "text-white" : "text-gray-800"}>
                     {contents.map((content, index) => renderContent(content, index))}
                 </div>
+
+                {/* Data Story Trigger Banner - Prominent UI */}
+                {!isUser && hasDataOrChart && !hasNarrative && onSuggestionClick && (
+                    <div className="mt-4 mb-1">
+                        <button
+                            onClick={() => onSuggestionClick("Generate a data story for this analysis")}
+                            className="group flex w-full items-center justify-between rounded-xl border border-indigo-100 bg-gradient-to-r from-indigo-50/50 via-white to-indigo-50/50 p-3 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md hover:from-indigo-50 hover:to-indigo-50"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-indigo-100 group-hover:scale-110 transition-transform">
+                                    <span className="text-lg">✨</span>
+                                </div>
+                                <div className="text-left">
+                                    <p className="text-sm font-bold text-gray-900 group-hover:text-indigo-700 transition-colors">Generate Data Story</p>
+                                    <p className="text-xs text-gray-500">Get a deep-dive analysis & executive summary</p>
+                                </div>
+                            </div>
+                            <div className="rounded-full bg-white p-1.5 text-indigo-400 shadow-sm ring-1 ring-gray-100 group-hover:text-indigo-600">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </div>
+                        </button>
+                    </div>
+                )}
 
                 {/* Timestamp and Action Buttons */}
                 <div className={`mt-3 flex items-center justify-between ${isUser ? "" : "border-t border-gray-100 pt-3"}`}>

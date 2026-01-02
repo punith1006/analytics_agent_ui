@@ -3,6 +3,8 @@
 import React, { useRef, useEffect } from "react";
 import MessageBubble from "./MessageBubble";
 import { Message } from "@/hooks/useAnalyticsChat";
+import { MessageContext } from "./MessageBubble";
+import { DataPointClickEvent } from "./ChartRenderer";
 
 interface ChatPanelProps {
     messages: Message[];
@@ -16,6 +18,8 @@ interface ChatPanelProps {
     onSuggestedQuery: (query: string) => void;
     onClearMessages: () => void;
     onRetry?: () => void;
+    onDataPointClick?: (event: DataPointClickEvent, context: MessageContext) => void;
+    onBookmark?: (message: Message) => void;
 }
 
 export default function ChatPanel({
@@ -30,6 +34,8 @@ export default function ChatPanel({
     onSuggestedQuery,
     onClearMessages,
     onRetry,
+    onDataPointClick,
+    onBookmark
 }: ChatPanelProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -159,6 +165,8 @@ export default function ChatPanel({
                                 isLatestMessage={isLatestAssistant}
                                 onRetry={onRetry}
                                 messageTitle={messageTitle || "Analytics_Report"}
+                                onDataPointClick={onDataPointClick}
+                                onBookmark={() => onBookmark?.(message)}
                             />
                         );
                     })}

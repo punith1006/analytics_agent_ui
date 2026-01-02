@@ -3,8 +3,13 @@
 import React, { useState, useEffect } from "react";
 import DataPanel from "@/components/DataPanel";
 import ChatPanel from "@/components/ChatPanel";
+import DrillDownPopover from "@/components/DrillDownPopover";
+import BookmarksPanel from "@/components/BookmarksPanel";
 import { useAnalyticsChat } from "@/hooks/useAnalyticsChat";
 import { usePinnedData } from "@/hooks/usePinnedData";
+import { useDrillDown, DrillContext } from "@/hooks/useDrillDown";
+import { useBookmarks, BookmarkedInsight } from "@/hooks/useBookmarks";
+import { DataPointClickEvent } from "@/components/ChartRenderer";
 
 // Suggested queries for quick start
 const SUGGESTED_QUERIES = [
@@ -21,6 +26,8 @@ const SUGGESTED_QUERIES = [
 export default function HomePage() {
   const [inputValue, setInputValue] = useState("");
   const [backendStatus, setBackendStatus] = useState<"checking" | "online" | "offline">("checking");
+  const [drillPopoverOpen, setDrillPopoverOpen] = useState(false);
+  const [drillPopoverPosition, setDrillPopoverPosition] = useState<{ x: number; y: number } | undefined>();
 
   const { messages, isLoading, sendMessage, clearMessages } = useAnalyticsChat();
   const {
@@ -32,11 +39,111 @@ export default function HomePage() {
     containerRef,
   } = usePinnedData();
 
+  const {
+    isDrilling,
+    drillOptions,
+    breadcrumb,
+    clickedElement,
+    fetchDrillOptions,
+    executeDrillDown,
+    resetDrill
+  } = useDrillDown();
+
+  const [bookmarksPanelOpen, setBookmarksPanelOpen] = useState(false);
+  const {
+    bookmarks,
+    addBookmark,
+    removeBookmark,
+    exportBookmarks,
+    importBookmarks
+  } = useBookmarks();
+
+  const handleBookmark = (message: any) => {
+    // Extract relevant data from message
+    const sqlContent = message.contents.find((c: any) => c.type === "sql");
+    const chartContent = message.contents.find((c: any) => c.type === "chart");
+    const analysisContent = message.contents.find((c: any) => c.type === "analysis");
+
+    // Create a title based on the query or data
+    let title = "Saved Insight";
+    if (chartContent?.content?.chartConfig?.title) {
+      title = chartContent.content.chartConfig.title;
+    }
+
+    addBookmark({
+      title,
+      query: "User Query", // Ideally we'd capture the actual user query that led to this
+      summary: analysisContent?.content?.summary || "No summary available",
+      chartConfig: chartContent?.content?.chartConfig,
+      tags: ["general"], // Default tag
+      notes: ""
+    });
+  };
+
+  const handleSelectBookmark = (bookmark: BookmarkedInsight) => {
+    setBookmarksPanelOpen(false);
+    // Restore the view - we could add it to pinned data or just re-run the query
+    // For now, let's just re-run the query creation logic or similar? 
+    // Or maybe just show it.
+    // Simpler: Just put the text in the input box so user can run it again?
+    if (bookmark.query) {
+      sendMessage(bookmark.query);
+    }
+  };
+
+  // Handle chart data point click
+  const handleDataPointClick = async (event: DataPointClickEvent, context: DrillContext) => {
+    // Context is now passed directly from the specific message!
+    if (!context || !context.sql_query) {
+      console.warn("Missing context for drill down", context);
+      return;
+    }
+
+    // Set popover position from the event's mouse coordinates
+    setDrillPopoverPosition({ x: event.mouseX, y: event.mouseY });
+
+    await fetchDrillOptions(event, context);
+    setDrillPopoverOpen(true);
+  };
+
+  // Handle drill option selection - send as a chat message
+  const handleDrillOptionSelect = async (option: { id: string; icon: string; label: string; description: string; drill_type: string; target_dimension?: string }) => {
+    setDrillPopoverOpen(false);
+
+    // Build a natural language query based on the drill option and clicked element
+    let drillQuery = "";
+    const label = clickedElement?.label || "the selected item";
+
+    switch (option.drill_type) {
+      case "breakdown":
+        drillQuery = `Break down ${label} by ${option.target_dimension?.replace(/_/g, ' ') || 'category'}`;
+        break;
+      case "trend":
+        drillQuery = `Show ${label} trend over time`;
+        break;
+      case "compare":
+        drillQuery = `Compare ${label} with others`;
+        break;
+      case "details":
+        drillQuery = `Show all records for ${label}`;
+        break;
+      default:
+        drillQuery = option.label;
+    }
+
+    // Send as a regular chat message
+    setInputValue(drillQuery);
+    await sendMessage(drillQuery);
+    setInputValue("");
+
+    resetDrill();
+  };
+
   // Check backend status on mount
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const res = await fetch("http://localhost:8001/health");
+        const res = await fetch("http://192.168.10.62:8001/health");
         if (res.ok) {
           setBackendStatus("online");
         } else {
@@ -109,9 +216,15 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Future: Bookmarks, Export, Settings buttons */}
-            <button className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-              📑 Export
+            <button
+              onClick={() => setBookmarksPanelOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              <span>📚</span>
+              <span>Bookmarks</span>
+              <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                {bookmarks.length}
+              </span>
             </button>
           </div>
         </div>
@@ -147,9 +260,46 @@ export default function HomePage() {
             onSuggestedQuery={handleSuggestedQuery}
             onClearMessages={clearMessages}
             onRetry={handleRetry}
+            onDataPointClick={handleDataPointClick}
+            onBookmark={handleBookmark}
           />
         </div>
       </main>
+
+      <BookmarksPanel
+        isOpen={bookmarksPanelOpen}
+        onClose={() => setBookmarksPanelOpen(false)}
+        bookmarks={bookmarks}
+        onSelectBookmark={handleSelectBookmark}
+        onRemoveBookmark={removeBookmark}
+        onExport={() => {
+          const data = exportBookmarks();
+          const blob = new Blob([data], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `analytics-bookmarks-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }}
+      />
+
+      {/* Drill-Down Popover */}
+      <DrillDownPopover
+        isOpen={drillPopoverOpen}
+        onClose={() => {
+          setDrillPopoverOpen(false);
+          resetDrill();
+        }}
+        clickedElement={clickedElement}
+        options={drillOptions}
+        onSelectOption={handleDrillOptionSelect}
+        breadcrumb={breadcrumb}
+        position={drillPopoverPosition}
+        isLoading={isDrilling}
+      />
     </div>
   );
 }

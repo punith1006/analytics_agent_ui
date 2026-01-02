@@ -37,13 +37,32 @@ interface ChartConfig {
     height?: number;
 }
 
+// Event fired when user clicks on a chart data point
+export interface DataPointClickEvent {
+    dimension: string;      // The x-axis dimension (e.g., "category_name")
+    value: unknown;         // The y-axis value (e.g., 45)
+    label: string;          // Display label (e.g., "Technology")
+    seriesName: string;     // The series clicked (e.g., "Enrollments")
+    rawData: Record<string, unknown>;  // Full data point object
+    mouseX: number;         // Mouse X position for popover
+    mouseY: number;         // Mouse Y position for popover
+}
+
 interface ChartRendererProps {
     config: ChartConfig;
     className?: string;
+    onDataPointClick?: (event: DataPointClickEvent) => void;
 }
 
-export default function ChartRenderer({ config, className = "" }: ChartRendererProps) {
+export default function ChartRenderer({ config, className = "", onDataPointClick }: ChartRendererProps) {
     const { type, title, data, xAxis, yAxis, series, height = 400 } = config;
+
+    // Track mouse position for popover placement
+    const mousePosition = React.useRef({ x: 0, y: 0 });
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+        mousePosition.current = { x: e.clientX, y: e.clientY };
+    };
 
     if (!data || data.length === 0) {
         return (
@@ -123,6 +142,22 @@ export default function ChartRenderer({ config, className = "" }: ChartRendererP
                                 fill={s.fill || s.color || COLORS[idx % COLORS.length]}
                                 name={s.name}
                                 radius={[8, 8, 0, 0]}
+                                cursor={onDataPointClick ? "pointer" : undefined}
+                                onClick={(barData) => {
+                                    if (onDataPointClick && barData) {
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        const dataRecord = barData as unknown as Record<string, unknown>;
+                                        onDataPointClick({
+                                            dimension: xAxis.dataKey,
+                                            value: dataRecord[s.dataKey],
+                                            label: String(dataRecord[xAxis.dataKey] ?? ""),
+                                            seriesName: s.name,
+                                            rawData: dataRecord,
+                                            mouseX: mousePosition.current.x,
+                                            mouseY: mousePosition.current.y
+                                        });
+                                    }
+                                }}
                             />
                         ))}
                     </BarChart>
@@ -176,11 +211,28 @@ export default function ChartRenderer({ config, className = "" }: ChartRendererP
                             paddingAngle={3}
                             dataKey={yAxis.dataKey}
                             nameKey={xAxis.dataKey}
-                            label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                            label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
                             labelLine={{ stroke: "#6b7280" }}
+                            onClick={(pieData) => {
+                                if (onDataPointClick && pieData) {
+                                    onDataPointClick({
+                                        dimension: xAxis.dataKey,
+                                        value: pieData[yAxis.dataKey as keyof typeof pieData],
+                                        label: String(pieData.name ?? pieData[xAxis.dataKey as keyof typeof pieData] ?? ""),
+                                        seriesName: yAxis.dataKey,
+                                        rawData: pieData as unknown as Record<string, unknown>,
+                                        mouseX: mousePosition.current.x,
+                                        mouseY: mousePosition.current.y
+                                    });
+                                }
+                            }}
                         >
-                            {data.map((_, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            {data.map((entry, index) => (
+                                <Cell
+                                    key={`cell-${index}`}
+                                    fill={COLORS[index % COLORS.length]}
+                                    cursor={onDataPointClick ? "pointer" : undefined}
+                                />
                             ))}
                         </Pie>
                         <Tooltip
@@ -227,7 +279,10 @@ export default function ChartRenderer({ config, className = "" }: ChartRendererP
     };
 
     return (
-        <div className={`rounded-2xl bg-white p-6 shadow-xl ${className}`}>
+        <div
+            className={`rounded-2xl bg-white p-6 shadow-xl ${className}`}
+            onMouseMove={handleMouseMove}
+        >
             <h3 className="mb-6 text-xl font-bold text-gray-800">{title}</h3>
             <ResponsiveContainer width="100%" height={height}>
                 {renderChart()}

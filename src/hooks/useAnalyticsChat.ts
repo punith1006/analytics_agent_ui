@@ -3,10 +3,10 @@
 import { useState, useCallback, useRef } from "react";
 
 // Analytics Agent API base URL
-const ANALYTICS_API_URL = process.env.NEXT_PUBLIC_ANALYTICS_API_URL || "http://localhost:8001";
+const ANALYTICS_API_URL = process.env.NEXT_PUBLIC_ANALYTICS_API_URL || "http://192.168.10.62:8001";
 
 export interface MessageContent {
-    type: "text" | "sql" | "data" | "analysis" | "chart" | "metrics" | "error" | "thinking" | "suggestions" | "clarification" | "explanatory";
+    type: "text" | "sql" | "data" | "analysis" | "chart" | "metrics" | "error" | "thinking" | "suggestions" | "clarification" | "explanatory" | "advisory" | "narrative";
     content: unknown;
 }
 
@@ -111,6 +111,9 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
                 case "explanatory":
                     updateCurrentMessage({ type: "explanatory", content: eventData });
                     break;
+                case "narrative":
+                    updateCurrentMessage({ type: "narrative", content: eventData });
+                    break;
                 case "error":
                     updateCurrentMessage({ type: "error", content: eventData });
                     break;
@@ -207,16 +210,17 @@ export function useAnalyticsChat(): UseAnalyticsChatReturn {
             } finally {
                 setIsLoading(false);
                 // Remove thinking state from final message
-                const currentMsg = currentMessageRef.current;
-                if (currentMsg) {
-                    currentMsg.contents = currentMsg.contents.filter(
+                const currentMsg: Message | null = currentMessageRef.current;
+                if (currentMsg !== null) {
+                    const msg: Message = currentMsg;
+                    msg.contents = msg.contents.filter(
                         (c: MessageContent) => c.type !== "thinking"
                     );
                     setMessages((prev) => {
-                        const idx = prev.findIndex((m) => m.id === currentMsg.id);
+                        const idx = prev.findIndex((m) => m.id === msg.id);
                         if (idx >= 0) {
                             const updated = [...prev];
-                            updated[idx] = { ...currentMsg };
+                            updated[idx] = { ...msg };
                             return updated;
                         }
                         return prev;
